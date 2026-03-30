@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PM2.5 Live Dashboard (Demo)</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;700&family=Prompt:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color-light: #f4f6f9;
+            --text-color-light: #212529;
+            --card-bg-light: #ffffff;
+            --border-color-light: #dee2e6;
+        }
+
+        .dark-theme {
+            --bg-color-dark: #121212;
+            --text-color-dark: #e0e0e0;
+            --card-bg-dark: #1e1e1e;
+            --border-color-dark: #333333;
+            background-color: var(--bg-color-dark);
+            color: var(--text-color-dark);
+        }
+
+        body {
+            font-family: 'Prompt', 'Noto Sans Thai', sans-serif;
+            transition: background-color 0.4s ease, color 0.4s ease;
+            min-height: 100vh;
+        }
+        
+        body:not(.dark-theme) {
+            background-color: var(--bg-color-light);
+            color: var(--text-color-light);
+        }
+
+        .glass-card {
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            transition: background-color 0.4s ease, border-color 0.4s ease, transform 0.2s;
+        }
+        
+        body:not(.dark-theme) .glass-card {
+            background-color: var(--card-bg-light);
+            border-color: var(--border-color-light);
+        }
+        
+        .dark-theme .glass-card {
+            background-color: var(--card-bg-dark);
+            border-color: var(--border-color-dark);
+        }
+
+        .btn-theme-toggle {
+            background: transparent;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+        
+        .btn-theme-toggle:hover { transform: scale(1.1); }
+        .dark-theme .btn-theme-toggle { color: #fff; }
+
+        .pm-circle {
+            width: 180px;
+            height: 180px;
+            border-radius: 50%;
+            color: white;
+            transition: all 0.5s ease;
+        }
+
+        .bg-status-good { background: linear-gradient(135deg, #28a745, #20c997); }
+        .bg-status-moderate { background: linear-gradient(135deg, #ffc107, #fd7e14); }
+        .bg-status-unhealthy { background: linear-gradient(135deg, #dc3545, #e83e8c); }
+        .bg-status-very-unhealthy { background: linear-gradient(135deg, #6f42c1, #343a40); }
+
+        .text-status-good { color: #28a745; }
+        .text-status-moderate { color: #fd7e14; }
+        .text-status-unhealthy { color: #dc3545; }
+        .text-status-very-unhealthy { color: #6f42c1; }
+        
+        .dark-theme select.form-select {
+            background-color: #2b2b2b;
+            color: white;
+            border-color: #444;
+        }
+    </style>
+</head>
+<body x-data="pmApp()" x-init="initApp()" :class="theme">
+
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="mb-0 fw-bold"><i class="bi bi-wind me-2"></i>PM2.5 Live</h2>
+            <div>
+                <span class="badge bg-secondary me-3" style="font-size: 1rem;" x-text="currentTime"></span>
+                <button class="btn btn-theme-toggle" @click="toggleTheme()">
+                    <i class="bi" :class="theme === 'dark-theme' ? 'bi-sun-fill text-warning' : 'bi-moon-fill'"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="row justify-content-center">
+            <div class="col-12 col-md-8 col-lg-6">
+                <div class="card glass-card mb-4 shadow-sm">
+                    <div class="card-body">
+                        <label class="form-label fw-medium">เลือกจังหวัด (Demo Mode)</label>
+                        <select class="form-select form-select-lg" x-model="selectedProvince" @change="fetchPM25Data()">
+                            <template x-for="prov in provinces" :key="prov.id">
+                                <option :value="prov.id" x-text="prov.name"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+
+                <div x-show="loading" class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status"></div>
+                </div>
+
+                <div x-show="!loading && pmData" class="card glass-card shadow text-center" x-transition.duration.500ms>
+                    <div class="card-header border-0 pt-4 bg-transparent">
+                        <h3 class="fw-bold" x-text="pmData?.provinceName"></h3>
+                        <p class="text-muted small mb-0">อัปเดตล่าสุด: <span x-text="pmData?.timestamp"></span></p>
+                    </div>
+                    <div class="card-body">
+                        <div class="pm-circle mx-auto d-flex align-items-center justify-content-center mb-3 shadow-sm"
+                             :class="getStatusClass(pmData?.status)">
+                            <div>
+                                <h1 class="display-3 fw-bold mb-0" x-text="pmData?.pm25Value"></h1>
+                                <small>µg/m³</small>
+                            </div>
+                        </div>
+                        <h4 class="fw-medium mb-3" :class="getStatusTextClass(pmData?.status)" x-text="pmData?.status"></h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('pmApp', () => ({
+                theme: 'dark-theme',
+                currentTime: '00:00:00',
+                provinces: [
+                    {id: 'BKK', name: 'กรุงเทพมหานคร'},
+                    {id: 'CNX', name: 'เชียงใหม่'},
+                    {id: 'puket', name: 'ภูเก็ต'}
+                ],
+                selectedProvince: 'BKK',
+                pmData: null,
+                loading: false,
+
+                initApp() {
+                    this.updateClock();
+                    setInterval(() => this.updateClock(), 1000);
+                    this.fetchPM25Data();
+                },
+                updateClock() {
+                    this.currentTime = new Date().toLocaleTimeString('th-TH');
+                },
+                toggleTheme() {
+                    this.theme = this.theme === 'dark-theme' ? 'light-theme' : 'dark-theme';
+                },
+                fetchPM25Data() {
+                    this.loading = true;
+                    // จำลองการโหลดข้อมูล (Mock API)
+                    setTimeout(() => {
+                        const mockValues = {
+                            'BKK': { val: 15, status: 'Good' },
+                            'CNX': { val: 120, status: 'Unhealthy' },
+                            'puket': { val: 35, status: 'Moderate' }
+                        };
+                        const selected = mockValues[this.selectedProvince];
+                        this.pmData = {
+                            provinceName: this.provinces.find(p => p.id === this.selectedProvince).name,
+                            pm25Value: selected.val,
+                            status: selected.status,
+                            timestamp: new Date().toLocaleString('th-TH')
+                        };
+                        this.loading = false;
+                    }, 800);
+                },
+                getStatusClass(status) {
+                    if(!status) return 'bg-secondary';
+                    if(status === 'Good') return 'bg-status-good';
+                    if(status === 'Moderate') return 'bg-status-moderate';
+                    return 'bg-status-unhealthy';
+                },
+                getStatusTextClass(status) {
+                    if(!status) return '';
+                    if(status === 'Good') return 'text-status-good';
+                    if(status === 'Moderate') return 'text-status-moderate';
+                    return 'text-status-unhealthy';
+                }
+            }));
+        });
+    </script>
+</body>
+</html>
